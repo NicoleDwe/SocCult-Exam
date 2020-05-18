@@ -2,4 +2,4 @@
 
 Social and Culutral Dynamics Exam: Analysis of Visual Perspective Taking Task combined with Empathy 
 
-Computational Modeling Assignement 5
+Computational Modeling Assignment 5
