@@ -16,7 +16,10 @@ pacman::p_load(
   dplyr,
   data.table,
   ggplot2,
-  BayesCombo
+  BayesCombo,
+  patchwork,
+  beepr,
+  graphics
 )
 
 ```
@@ -141,12 +144,22 @@ d$ID <- as.factor(d$ID)
 # check if any NA's
 d[!complete.cases(d), ]
 
+# add log values and log
+d$RT_log <- log(d$RT)
+summary(d$RT_log)
+
+# add log - ndt for summary 
+d$RT_log_ndt <- log(d$RT - 200)
+summary(d$RT_log_ndt)
+
+# summary 
 summary(d)
 
-y <- subset(d, response == "yes")
-n <- subset(d, response == "no")
+# make seperate subsets
+y <- subset(d, correctresponse == "yes" & accuracy != "late") #6 late rows removed 
+n <- subset(d, correctresponse == "no")
 c <- subset(d, accuracy == "correct")
-cy <- subset(c, response == "yes")
+cy <- subset(c, correctresponse == "yes")
 
 ggplot(yes, aes(x = ID, y = RT, fill = consistency)) + 
          geom_bar(stat = "summary", fun.y = "mean", position = "dodge")
@@ -156,6 +169,19 @@ ggplot(yes, aes(x = affemp, y = RT, fill = consistency)) +
 
 ggplot(no, aes(x = ID, fill = accuracy, color = consistency)) + 
          geom_bar(position = "dodge")
+
+mean(RT_log_ndt)
+mean()
+
+# calculating sd and mean by of ID means
+mean_RT_log <- cy %>% 
+  group_by(ID) %>% 
+  summarise(mean = mean(RT_log_ndt))
+
+sd(mean_RT_log$mean)
+
+summary(mean_RT_log$mean)
+
 ```
 
 
@@ -163,7 +189,7 @@ ggplot(no, aes(x = ID, fill = accuracy, color = consistency)) +
 ```{r}
 
 # Functions for RT models
-RT_FancyFunction <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3){
+RT_Prior_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3, samples = 1000){
   
   # prior test
   RT_prior <- brm(
@@ -178,63 +204,15 @@ RT_FancyFunction <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000,
   iter = iter_nr)
  
   # prior check
-  ppc1 <- pp_check(RT_prior, nsamples = 1000)
- 
-  # run model
-  RT_m <- brm(
-  formula,
-  data,
-  family = shifted_lognormal(),
-  prior = prior,
-  sample_prior = T,
-  seed = 28,
-  chains = chain_nr,
-  cores = core_nr,
-  iter = iter_nr)
+  ppc1 <- pp_check(RT_prior, nsamples = samples)
   
-  # summary/quality check
-  summary <- summary(RT_m) 
-  
-  #MCMC trace and rank trace plots
-  color_scheme_set("viridis")
-  mcmc1 <- mcmc_trace(RT_m, pars = vars(-contains("["), -contains("prior"), -contains("lp"))) + theme_classic()
-  mcmc2 <- mcmc_rank_overlay(RT_m, pars = vars(-contains("["), -contains("prior"), -contains("lp"))) + theme_classic()
-  
-  # posterior checks 
-  ppc2 <- pp_check(RT_m, nsamples = 1000)
-  
-  #add loo 
-  RT_m <- add_criterion(RT_m, criterion = c("bayes_R2", "loo"), reloo = T)
-  
-  #return
-  all <- list("prior_check" = ppc1, 
-              "model" = RT_m,
-              "summary" = summary,
-              "mcmc_trace" = mcmc1,
-              "mcmc_ranktrace" = mcmc2,
-              "posterior_check" = ppc2)
-  return(all)
-}
-RT_Prior_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3){
-  
-  # prior test
-  RT_prior <- brm(
-  formula,
-  data,
-  family = shifted_lognormal(),
-  prior = prior,
-  sample_prior = "only",
-  seed = 28,
-  chains = chain_nr,
-  cores = core_nr,
-  iter = iter_nr)
- 
-  # prior check
-  ppc1 <- pp_check(RT_prior, nsamples = 1000)
+   beep(sound = 10)
  
   #return
   return(ppc1)
+  
 }
+
 RT_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3){
   
   # run model
@@ -261,7 +239,9 @@ RT_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000
   ppc2 <- pp_check(RT_m, nsamples = 1000)
   
   #add loo 
-  RT_m <- add_criterion(RT_m, criterion = c("bayes_R2", "loo"), reloo = T)
+  RT_m <- add_criterion(RT_m, criterion = c("loo"), reloo = T)
+  
+    beep(sound = 10)
   
   #return
   all <- list("model" = RT_m,
@@ -274,58 +254,6 @@ RT_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000
 
 
 # Functions for Error models
-Error_FancyFunction <- function(formula, data, prior, chain_nr = 4, iter_nr = 4000, core_nr = 3){
-  
-  # prior test
-  Error_prior <- brm(
-  formula,
-  data,
-  family = bernoulli(),
-  prior = prior,
-  sample_prior = "only",
-  seed = 28,
-  chains = chain_nr,
-  cores = core_nr,
-  iter = iter_nr)
- 
-  # prior check
-  ppc1 <- pp_check(Error_prior, nsamples = 1000)
- 
-  # run model
-  Error_m <- brm(
-  formula,
-  data,
-  family = bernoulli(),
-  prior = prior,
-  sample_prior = T,
-  seed = 28,
-  chains = chain_nr,
-  cores = core_nr,
-  iter = iter_nr)
-
-  # summary/quality check
-  summary <- summary(Error_m) 
-  
-  #MCMC trace and rank trace plots
-  color_scheme_set("viridis")
-  mcmc1 <- mcmc_trace(Error_m, pars = vars(-contains("["), -contains("prior"), -contains("lp"))) + theme_classic()
-  mcmc2 <- mcmc_rank_overlay(Error_m, pars = vars(-contains("["), -contains("prior"), -contains("lp"))) + theme_classic()
-  
-  # posterior checks 
-  ppc2 <- pp_check(Error_m, nsamples = 1000)
-  
-  #add loo 
-  Error_m <- add_criterion(Error_m, criterion = c("bayes_R2", "loo"), reloo = T)
-  
-  #return
-  all <- list("prior_check" = ppc1, 
-              "model" = RT_m,
-              "summary" = summary,
-              "mcmc_trace" = mcmc1,
-              "mcmc_ranktrace" = mcmc2,
-              "posterior_check" = ppc2)
-  return(all)
-}
 Error_Prior_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3){
   
   # prior test
@@ -342,10 +270,15 @@ Error_Prior_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4
  
   # prior check
   ppc1 <- pp_check(Error_prior, nsamples = 1000)
+  
+  all <- list("model" = Error_prior,
+              "ppc" = ppc1)
  
+  beep(sound = 10)
   #return
-  return(ppc1)
+  return(all)
 }
+
 Error_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4000, core_nr = 3){
   
   # run model
@@ -358,7 +291,10 @@ Error_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4
   seed = 28,
   chains = chain_nr,
   cores = core_nr,
-  iter = iter_nr)
+  iter = iter_nr,
+  control = list(
+    adapt_delta=0.99,
+    max_treedepth = 20))
   
   # summary/quality check
   summary <- summary(Error_m) 
@@ -374,6 +310,7 @@ Error_Model_Function <- function(formula, prior, data, chain_nr = 4, iter_nr = 4
   #add loo 
   Error_m <- add_criterion(Error_m, criterion = c("bayes_R2", "loo"), reloo = T)
   
+  beep(sound = 10)
   #return
   all <- list("model" = Error_m,
               "summary" = summary,
@@ -417,16 +354,19 @@ RT_f0 <- bf(RT|trunc(ub = 2000) ~ 1 + (1|ID))
 
 get_prior(RT_f0, cy, family = shifted_lognormal())
 
+min(cy$RT)
+
 RT_prior_f0 <- c(
-  prior(normal(6.3, 0.1), class = Intercept), 
-  prior(normal(0, .1), class = sigma),
-  prior(normal(0, .1), class = sd) #not bigger than the effect
+  prior(normal(6.3, 0.2), class = Intercept), 
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = sd) #not bigger than the effect
   # prior(normal(nn, nn), class = ndt))
 )
 
-RT_prior_m0 <- RT_Prior_Function(formula = RT_f0, prior = RT_prior_f0, data = cy, chain_nr = 2, iter_nr = 2000)
+RT_prior_m0 <- RT_Prior_Function(formula = RT_f0, prior = RT_prior_f0, data = cy)
 RT_m0 <- RT_Model_Function(formula = RT_f0, prior = RT_prior_f0, data = cy)
 
+RT_m0$model  
 RT_m0$summary
 RT_m0$mcmc_trace
 RT_m0$mcmc_ranktrace
@@ -434,7 +374,6 @@ RT_m0$posterior_check
 
 #predictions
 predictions_m0 <- predict(RT_m0)
-predictions_m0
 mean(predictions_m0)
 sd(predictions_m0)
 
@@ -442,10 +381,16 @@ sd(predictions_m0)
 plot(hypothesis(RT_m0$model,"Intercept > 0"))
 plot(hypothesis(RT_m0$model, "Intercept > 0", class = "sd", group = "ID"))
 
-#prior posterior plot for sigma
+#prior-posterior for intercept
 prior0 <- prior_samples(RT_m0$model)
 post0 <- posterior_samples(RT_m0$model)
-plot(density(prior0$sigma), ylim=c(1,40), lty = 3)
+plot(density(prior0$Intercept), ylim=c(0,9), lty = 3, main = "RT_M0: Posterior and prior distribution for the intercept")
+lines(density(post0$b_Intercept), lty = 1)
+
+#prior-posterior plot for sigma
+prior0 <- prior_samples(RT_m0$model)
+post0 <- posterior_samples(RT_m0$model)
+plot(density(prior0$sigma), ylim=c(0,40), lty = 3, main = "RT_M0: Posterior and prior distribution for sigma")
 lines(density(post0$sigma), lty = 1)
 
 ```
@@ -459,13 +404,14 @@ RT_f1 <- bf(RT|trunc(ub = 2000) ~ 1 + consistency + (1|ID))
 get_prior(RT_f1, cy, family = shifted_lognormal())
 
 RT_prior_f1 <- c(
-  prior(normal(6.3, 0.1), class = Intercept), 
-  prior(normal(0, .1), class = sigma),
-  prior(normal(0, .1), class = sd) #not bigger than the effect
+  prior(normal(6.3, 0.2), class = Intercept), 
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = b),
+  prior(normal(0, 0.2), class = sd) #not bigger than the effect
   # prior(normal(nn, nn), class = ndt))
 )
 
-RT_prior_m1 <- RT_Prior_Function(formula = RT_f1, prior = RT_prior_f1, data = cy, chain_nr = 2, iter_nr = 2000)
+RT_prior_m1 <- RT_Prior_Function(formula = RT_f1, prior = RT_prior_f1, data = cy)
 RT_m1 <- RT_Model_Function(formula = RT_f1, prior = RT_prior_f1, data = cy)
 
 RT_m1$summary
@@ -474,25 +420,72 @@ RT_m1$mcmc_ranktrace
 RT_m1$posterior_check
 
 ## Posterior update check (Has the posterior learned from the prior?)
-plot(hypothesis(RT_m1,"Intercept > 0"))
-plot(hypothesis(RT_m1,"consistencyincon > 0"))
-plot(hypothesis(RT_m1, "Intercept > 0", class = "sd", group = "ID"))
+plot(hypothesis(RT_m1$model,"Intercept > 0"))
+plot(hypothesis(RT_m1$model,"consistencyincon > 0"))
+plot(hypothesis(RT_m1$model, "Intercept > 0", class = "sd", group = "ID"))
+
+#prior-posterior for intercept
+prior1 <- prior_samples(RT_m1$model)
+post1 <- posterior_samples(RT_m1$model)
+plot(density(prior1$Intercept), ylim=c(0,9), lty = 3, main = "RT_M1: Posterior and prior distribution for the intercept")
+lines(density(post1$b_Intercept), lty = 1)
+
+#prior-posterior plot for sigma
+prior1 <- prior_samples(RT_m1$model)
+post1 <- posterior_samples(RT_m1$model)
+plot(density(prior1$sigma), ylim=c(0,40), lty = 3, main = "RT_M1: Posterior and prior distribution for sigma")
+lines(density(post1$sigma), lty = 1)
+
 ```
 
 
 #RT - F1.1
 ```{r}
+
+ggplot(cy, aes(x=consistency, y=RT, color=ID)) + 
+  stat_summary(aes(group = ID), fun.y = mean, geom = 'line', size=0.5, alpha=0.9)
+
 # Consistency, complex varying effect
 RT_f1.1 <- bf(RT|trunc(ub = 2000) ~ 1 + consistency + (1 + consistency|ID))
 
-#same prior as model 1
-RT_prior_m1.1 <- RT_Prior_Function(formula = RT_f1.1, prior = RT_prior_f1, data = cy)
-RT_m1.1 <- RT_Model_Function(formula = RT_f1.1, prior = RT_prior_f1, data = cy)
+get_prior(RT_f1.1, cy)
+
+RT_prior_f1.1 <- c(
+  prior(normal(6.3, 0.2), class = Intercept), 
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = b),
+  prior(normal(0, 0.2), class = sd),
+  prior(lkj(1), class = cor)#not bigger than the effect
+  # prior(normal(nn, nn), class = ndt))
+)
+
+RT_prior_m1.1 <- RT_Prior_Function(formula = RT_f1.1, prior = RT_prior_f1.1, data = cy)
+RT_m1.1 <- RT_Model_Function(formula = RT_f1.1, prior = RT_prior_f1.1, data = cy)
 
 RT_m1.1$summary
 RT_m1.1$mcmc_trace
 RT_m1.1$mcmc_ranktrace
 RT_m1.1$posterior_check
+
+
+## Posterior update check (Has the posterior learned from the prior?)
+plot(hypothesis(RT_m1.1$model,"Intercept > 0"))
+plot(hypothesis(RT_m1.1$model,"consistencyincon > 0"))
+plot(hypothesis(RT_m1.1$model, "Intercept > 0", class = "sd", group = "ID"))
+plot(hypothesis(RT_m1.1$model, "consistencyincon > 0", class = "sd", group = "ID"))
+plot(hypothesis(RT_m1.1$model, "Intercept__consistencyincon = 0", class = "cor", group = "ID"))
+
+#prior-posterior distributions
+prior1.1 <- prior_samples(RT_m1.1$model)
+post1.1 <- posterior_samples(RT_m1.1$model)
+
+#prior-posterior plot for intercept
+plot(density(prior1.1$Intercept), ylim=c(0,9), lty = 3, main = "RT_M1.1: Posterior and prior distribution for the intercept")
+lines(density(post1.1$b_Intercept), lty = 1)
+
+#prior-posterior plot for sigma
+plot(density(prior1.1$sigma), ylim=c(0,45), lty = 3, main = "RT_M1.1: Posterior and prior distribution for sigma")
+lines(density(post1.1$sigma), lty = 1)
 ```
 
 
@@ -504,19 +497,44 @@ RT_f2 <- bf(RT|trunc(ub = 2000) ~ 1 + condition + consistency + (1|ID))
 get_prior(RT_f2, cy, family = shifted_lognormal())
 
 RT_prior_f2 <- c(
-  prior(normal(6.3, 0.1), class = Intercept), 
-  prior(normal(0, .1), class = sigma),
-  prior(normal(0, .1), class = sd) #not bigger than the effect
+  prior(normal(6.3, 0.2), class = Intercept), 
+  prior(normal(0, 0.2), class = b),
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = sd) #not bigger than the effect
   # prior(normal(nn, nn), class = ndt))
 )
 
 RT_prior_m2 <- RT_Prior_Function(formula = RT_f2, prior = RT_prior_f2, data = cy)
+
+pairs(RT_prior_m2$data)
+
+
 RT_m2 <- RT_Model_Function(formula = RT_f2, prior = RT_prior_f2, data = cy)
 
 RT_m2$summary
 RT_m2$mcmc_trace
 RT_m2$mcmc_ranktrace
 RT_m2$posterior_check
+
+## Posterior update check (Has the posterior learned from the prior?)
+plot(hypothesis(RT_m2$model,"Intercept > 0")) #intercept
+plot(hypothesis(RT_m2$model,"conditionO > 0")) # beta for condition
+plot(hypothesis(RT_m2$model,"consistencyincon > 0")) # beta for consistency
+plot(hypothesis(RT_m2$model, "Intercept > 0", class = "sd", group = "ID")) #varyig intercept
+
+#prior-posterior distributions
+prior2 <- prior_samples(RT_m2$model)
+post2 <- posterior_samples(RT_m2$model)
+
+par(mfrow=c(2,1))
+
+#prior-posterior plot for intercept
+plot(density(prior2$Intercept), ylim=c(0,9), lty = 3, main = "RT_M2: Posterior and prior distribution for the intercept")
+lines(density(post2$b_Intercept), lty = 1)
+
+#prior-posterior plot for sigma
+plot(density(prior2$sigma), ylim=c(0,40), lty = 3, main = "RT_M2: Posterior and prior distribution for sigma")
+lines(density(post2$sigma), lty = 1)
 ```
 
 
@@ -525,14 +543,51 @@ RT_m2$posterior_check
 # Consistency + Condition, simple varying effect
 RT_f2.1 <- bf(RT|trunc(ub = 2000) ~ 1 + condition + consistency + (1 + condition + consistency|ID))
 
-#same prior as model 2
-RT_prior_m2.1 <- RT_Prior_Function(formula = RT_f2.1, prior = RT_prior_f2, data = cy)
-RT_m2.1 <- RT_Model_Function(formula = RT_f2.1, prior = RT_prior_f2, data = cy)
+RT_prior_f2.1 <- c(
+  prior(normal(6.3, 0.2), class = Intercept), 
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = b),
+  prior(normal(0, 0.2), class = sd),
+  prior(lkj(1), class = cor)#not bigger than the effect
+  # prior(normal(nn, nn), class = ndt))
+)
+
+RT_prior_m2.1 <- RT_Prior_Function(formula = RT_f2.1, prior = RT_prior_f2.1, data = cy)
+RT_m2.1 <- RT_Model_Function(formula = RT_f2.1, prior = RT_prior_f2.1, data = cy)
 
 RT_m2.1$summary
 RT_m2.1$mcmc_trace
 RT_m2.1$mcmc_ranktrace
 RT_m2.1$posterior_check
+
+## Posterior update check (Has the posterior learned from the prior?)
+plot(hypothesis(RT_m2.1$model,"Intercept > 0")) #intercept
+
+plot(hypothesis(RT_m2.1$model,"conditionO > 0")) # beta for condition
+plot(hypothesis(RT_m2.1$model,"consistencyincon > 0")) # beta for consistency
+
+plot(hypothesis(RT_m2.1$model, "Intercept > 0", class = "sd", group = "ID")) #varyig intercept
+plot(hypothesis(RT_m2.1$model, "conditionO > 0", class = "sd", group = "ID")) #varying slope for condition
+plot(hypothesis(RT_m2.1$model, "consistencyincon > 0", class = "sd", group = "ID")) #varying slope for consistency
+
+plot(hypothesis(RT_m2.1$model, "Intercept__conditionO > 0", class = "cor", group = "ID")) #varyig intercept
+plot(hypothesis(RT_m2.1$model, "Intercept__consistencyincon > 0", class = "cor", group = "ID")) #varying slope for condition
+plot(hypothesis(RT_m2.1$model, "conditionO__consistencyincon > 0", class = "cor", group = "ID")) #varying slope for consistency
+
+#prior-posterior distributions
+prior2.1 <- prior_samples(RT_m2.1$model)
+post2.1 <- posterior_samples(RT_m2.1$model)
+
+par(mfrow=c(2,1))
+
+#prior-posterior plot for intercept
+plot(density(prior2.1$Intercept), ylim=c(0,9), lty = 3, main = "RT_M2.1: Posterior and prior distribution for the intercept")
+lines(density(post2.1$b_Intercept), lty = 1)
+
+#prior-posterior plot for sigma
+plot(density(prior2.1$sigma), ylim=c(0,40), lty = 3, main = "RT_M2.1: Posterior and prior distribution for sigma")
+lines(density(post2.1$sigma), lty = 1)
+
 ```
 
 
@@ -544,19 +599,43 @@ RT_f3 <- bf(RT|trunc(ub = 2000) ~ 0 + condition + condition : consistency + (1|I
 get_prior(RT_f3, cy, family = shifted_lognormal())
 
 RT_prior_f3 <- c(
-  prior(normal(6.3, 0.1), class = Intercept), 
-  prior(normal(0, .1), class = sigma),
-  prior(normal(0, .1), class = sd) #not bigger than the effect
+  prior(normal(6.3, 0.2), class = b, coef = conditionA),
+  prior(normal(6.3, 0.2), class = b, coef = conditionO),
+  prior(normal(0, 0.2), class = b, coef = conditionA:consistencyincon),
+  prior(normal(0, 0.2), class = b, coef = conditionO:consistencyincon),
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = sd) #not bigger than the effect
   # prior(normal(nn, nn), class = ndt))
 )
 
-RT_prior_m3 <- RT_Prior_Function(formula = RT_f3, prior = RT_prior_f3, data = cy)
+RT_m3_prior <- RT_Prior_Function(formula = RT_f3, prior = RT_prior_f3, data = cy)
 RT_m3 <- RT_Model_Function(formula = RT_f3, prior = RT_prior_f3, data = cy)
 
 RT_m3$summary
 RT_m3$mcmc_trace
 RT_m3$mcmc_ranktrace
 RT_m3$posterior_check
+
+## Posterior update check (Has the posterior learned from the prior?)
+plot(hypothesis(RT_m3$model,"conditionA > 0")) # intercept for arrow
+plot(hypothesis(RT_m3$model,"conditionO > 0")) # intercept for other
+
+plot(hypothesis(RT_m3$model,"conditionA:consistencyincon > 0")) # beta for consistency
+plot(hypothesis(RT_m3$model,"conditionO:consistencyincon > 0")) # beta for consistency
+
+plot(hypothesis(RT_m3$model,"conditionO:consistencyincon > conditionA:consistencyincon")) # beta for consistency
+
+plot(hypothesis(RT_m3$model, "Intercept > 0", class = "sd", group = "ID")) #varyig intercept
+
+#prior-posterior distributions
+prior3 <- prior_samples(RT_m3$model)
+post3 <- posterior_samples(RT_m3$model)
+
+par(mfrow=c(1,1))
+
+#prior-posterior plot for sigma
+plot(density(prior3$sigma), ylim=c(0,40), lty = 3, main = "RT_M3: Posterior and prior distribution for sigma")
+lines(density(post3$sigma), lty = 1)
 ```
 
 
@@ -565,14 +644,49 @@ RT_m3$posterior_check
 # Interaction, complex varying effect
 RT_f3.1 <- bf(RT|trunc(ub = 2000) ~ 0 + condition + condition : consistency + (0 + condition + condition : consistency|ID))
 
+RT_prior_f3.1 <- c(
+  prior(normal(6.3, 0.2), class = b, coef = conditionA),
+  prior(normal(6.3, 0.2), class = b, coef = conditionO),
+  prior(normal(0, 0.2), class = b, coef = conditionA:consistencyincon),
+  prior(normal(0, 0.2), class = b, coef = conditionO:consistencyincon),
+  prior(normal(0, 0.2), class = sigma),
+  prior(normal(0, 0.2), class = sd),
+  prior(lkj(1), class = cor) #not bigger than the effect
+  # prior(normal(nn, nn), class = ndt))
+)
+
 #same prior as model 3
-RT_prior_m3.1 <- RT_Prior_Function(formula = RT_f3.1, prior = RT_prior_f3, data = cy)
-RT_m3.1 <- RT_Model_Function(formula = RT_f3.1, prior = RT_prior_f3, data = cy)
+RT_prior_m3.1 <- RT_Prior_Function(formula = RT_f3.1, prior = RT_prior_f3.1, data = cy)
+RT_m3.1 <- RT_Model_Function(formula = RT_f3.1, prior = RT_prior_f3.1, data = cy)
 
 RT_m3.1$summary
 RT_m3.1$mcmc_trace
 RT_m3.1$mcmc_ranktrace
 RT_m3.1$posterior_check
+
+## Posterior update check (Has the posterior learned from the prior?)
+plot(hypothesis(RT_m3.1$model,"conditionA > 0")) # intercept for arrow
+plot(hypothesis(RT_m3.1$model,"conditionO > 0")) # intercept for other
+
+plot(hypothesis(RT_m3.1$model,"conditionA:consistencyincon > 0")) # beta for consistency
+plot(hypothesis(RT_m3.1$model,"conditionO:consistencyincon > 0")) # beta for consistency
+
+plot(hypothesis(RT_m3.1$model, "conditionA > 0", class = "sd", group = "ID")) #varyig intercept for arrow
+plot(hypothesis(RT_m3.1$model, "conditionO > 0", class = "sd", group = "ID")) #varyig intercept other
+plot(hypothesis(RT_m3.1$model, "conditionA:consistencyincon > 0", class = "sd", group = "ID")) #varyig slope for arrow
+plot(hypothesis(RT_m3.1$model, "conditionO:consistencyincon > 0", class = "sd", group = "ID")) #varyig slope other
+
+#prior-posterior distributions
+prior3 <- prior_samples(RT_m3$model)
+post3 <- posterior_samples(RT_m3$model)
+
+par(mfrow=c(1,1))
+
+#prior-posterior plot for sigma
+plot(density(prior3$sigma), ylim=c(0,40), lty = 3, main = "RT_M3: Posterior and prior distribution for sigma")
+lines(density(post3$sigma), lty = 1)
+
+
 ```
 
 
@@ -580,16 +694,39 @@ RT_m3.1$posterior_check
 ```{r}
 
 #comparing out of sample error
-loo_compare(RT_m0, RT_m1, RT_m1.1, RT_m2, RT_m2.1, RT_m3, RT_m3.1)
+loo_compare(RT_m0$model, RT_m1$model, RT_m1.1$model, RT_m3$model, RT_m3.1$model)
+
+#RT_m2$model, RT_m2.1$model
 
 #stacking weights
-loo_model_weights(RT_m0, RT_m1, RT_m1.1, RT_m2, RT_m2.1, RT_m3, RT_m3.1)
+loo_model_weights(RT_m0$model, RT_m1.1$model, RT_m3.1$model)
 
 ```
 
 
 #Error - Defining Models
 ```{r}
+
+#from probability to log odds
+#log(x) - log(1-x)
+#can only go from 0 to 1 
+logit(0.549834)
+logit(0.999)
+logit(0.268)
+logit(0.5)
+logit(0.)
+inv_logit(1.5)
+
+
+percE <- y %>% 
+  group_by(ID) %>% 
+  summarize(incorrect = length(which(accuracy == "incorrect")), 
+            correct = length(which(accuracy == "correct")),
+            ratio = incorrect/(correct+incorrect))
+
+mean(percE$ratio)
+max(percE$incorrect)
+sd(percE$ratio)
 
 ### Multilevel Models
 # Baseline model
@@ -615,20 +752,54 @@ E_f3.1 <- bf(accuracy ~ 0 + condition + condition : consistency + (0 + condition
 
 #Error - F0 
 ```{r}
-E_f0 <- bf(accuracy ~ 1 + (1|ID))
+y$accuracybi <- as.integer(y$accuracy) - 1
+y$accuracybi <- as.integer(y$accuracybi)
+
+E_f0 <- bf(accuracybi ~ 1 + (1|ID))
 
 get_prior(E_f0, y, family = bernoulli())
 
+p <- inv_logit(rnorm(10000,-2,1) + rnorm(10000,0,1))
+dens(p, adj=0.1 )
+
+inv_logit(4)
+inv_logit(2)
+
+
+inv_logit(-2.5)
+inv_logit(2)
+inv_logit(1.5)
+
 E_prior_f0 <- c(
-  prior(normal(0, 1.5), class = Intercept))
+  prior(normal(-2, 1.5), class = Intercept),
+  prior(normal(0, 1.5), class = sd))
 
 E_prior_m0 <- Error_Prior_Function(formula = E_f0, prior = E_prior_f0, data = y)
+y_pred <- posterior_linpred(E_prior_m0$model)
+dens(inv_logit(y_pred))
+
 E_m0 <- Error_Model_Function(formula = E_f0, prior = E_prior_f0, data = y)
 
 E_m0$summary
 E_m0$mcmc_trace
 E_m0$mcmc_ranktrace
 E_m0$posterior_check
+y_pred <- posterior_linpred(E_m0$model)
+dens(inv_logit(y_pred))
+
+prior <- prior_samples(E_m0$model)
+post <- posterior_samples(E_m0$model)
+
+par(mfrow=c(1,1))
+
+#prior-posterior plot for sigma
+plot(density(prior$Intercept), ylim=c(0,4), xlim=c(-4,4), lty = 3, main = "E_m0: Posterior and prior distribution for the intercept")
+lines(density(post$b_Intercept), lty = 1)
+
+plot(density(inv_logit(prior$Intercept)), ylim=c(0,70), lty = 3, main= "E_m0: Posterior and prior distribution for the intercept")
+lines(density(inv_logit(post$b_Intercept)), lty = 1)
+
+plot(hypothesis(E_m0$model, "Intercept > 0", class = "sd", group = "ID")) #varyig intercept for arrow
 
 ```
 
@@ -731,12 +902,29 @@ E_m3$posterior_check
 ```
 
 
+
+
 #Error - F3.1
 ```{r}
-E_f3.1 <- bf(accuracy ~ 1 + consistency + (1|ID))
+E_f3.1 <- bf(accuracy ~ 0 + condition + condition : consistency + (0 + condition + condition : consistency|ID))
+
+get_prior(E_f3.1, y, family = bernoulli())
+
+E_prior_f3.1 <- c(
+  prior(normal(-2, 1.5), class = b, coef = conditionA),
+  prior(normal(-2, 1.5), class = b, coef = conditionO),
+  prior(normal(0, 1.5), class = b, coef = conditionA:consistencyincon),
+  prior(normal(0, 1.5), class = b, coef = conditionO:consistencyincon),
+  prior(normal(0, 1.5), class = sd),
+  prior(lkj(1), class = cor)
+  # prior(normal(nn, nn), class = ndt))
+)
 
 # same prior as in f3
 E_prior_m3.1 <- Error_Prior_Function(formula = E_f3.1, prior = E_prior_f3.1, data = y)
+y_pred <- posterior_linpred(E_prior_m3.1$model)
+dens(inv_logit(y_pred))
+
 E_m3.1 <- Error_Model_Function(formula = E_f3.1, prior = E_prior_f3.1, data = y)
 
 E_m3.1$summary
@@ -744,7 +932,44 @@ E_m3.1$mcmc_trace
 E_m3.1$mcmc_ranktrace
 E_m3.1$posterior_check
 
+y_pred <- posterior_linpred(E_m3.1$model)
+dens(inv_logit(y_pred))
+
+prior <- prior_samples(E_m3.1$model)
+post <- posterior_samples(E_m3.1$model)
+
+
+plot(hypothesis(E_m3.1$model,"conditionA > 0")) # intercept for arrow
+plot(hypothesis(E_m3.1$model,"conditionO > 0")) # intercept for other
+
+plot(hypothesis(E_m3.1$model,"conditionA:consistencyincon > 0")) # beta for consistency
+plot(hypothesis(E_m3.1$model,"conditionO:consistencyincon > 0")) # beta for consistency
+
+plot(hypothesis(E_m3.1$model, "conditionA > 0", class = "sd", group = "ID")) #varyig intercept for arrow
+plot(hypothesis(E_m3.1$model, "conditionO > 0", class = "sd", group = "ID")) #varyig intercept other
+plot(hypothesis(E_m3.1$model, "conditionA:consistencyincon > 0", class = "sd", group = "ID")) #varyig slope for arrow
+plot(hypothesis(E_m3.1$model, "conditionO:consistencyincon > 0", class = "sd", group = "ID")) #varyig slope other
+
+plot(hypothesis(E_m3.1$model, "ID__conditionA__conditionO > 0", class = "cor")) #varyig intercept for arrow
+plot(hypothesis(E_m3.1$model, "ID__conditionA__conditionA:consistencyincon > 0", class = "cor")) #varyig intercept for arrow
+plot(hypothesis(E_m3.1$model, "ID__conditionA__conditionA:consistencyincon > 0", class = "cor"))
+
+#real hypothesis testing 
+plot(hypothesis(E_m3.1$model,"conditionO > conditionA"))
+plot(hypothesis(E_m3.1$model,"conditionO:consistencyincon > conditionA:consistencyincon"))
+
 ```
+
+
+#PLOTS PLOTS PLOTS
+```{r}
+
+ggplot(data = y, aes(x = cosistency, y = accuracy, color = condition)) + 
+  geom_line()
+
+
+```
+
 
 
 #Error - Model Comparison
