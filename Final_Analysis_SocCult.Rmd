@@ -691,13 +691,13 @@ emp_RT <- ggplot(data = cy_emp, aes(y = s_slope_RT, x = s_totalemp)) +
 # plot for all empathy sclaes
 colors <- c("Total Empathy" = "black", "Cognitive Empathy" = "firebrick1", "Affective Empathy" = "deepskyblue3")
 all_emp_RT <- ggplot(data = cy_emp) + 
-  #total emp
+  # total emp
   geom_point(aes(y = s_slope_RT, x = s_totalemp, color = "Total Empathy")) + 
   geom_smooth(aes(y = s_slope_RT, x = s_totalemp), method = lm, color = "black", level = 0.9, alpha = 0.2) +
   #cognitive
   geom_point(aes(y = s_slope_RT, x = s_cogemp, color = "Cognitive Empathy")) + 
   geom_smooth(aes(y = s_slope_RT, x = s_cogemp), method = lm, color = "firebrick1", level = 0.9, alpha = 0.2) +
-  #affective
+  # affective
   geom_point(aes(y = s_slope_RT, x = s_affemp, color = "Affective Empathy")) + 
   geom_smooth(aes(y = s_slope_RT, x = s_affemp), method = lm, color = "deepskyblue3", level = 0.9, alpha = 0.2) +
   labs(title = "Relation between Scaled Empathy Scores\nand Scaled Varying Slopes (RT)", 
