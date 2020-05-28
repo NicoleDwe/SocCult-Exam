@@ -225,9 +225,14 @@ exp(6.15 + 0.03) - exp(6.15)
 
 #make predictions
 cy$pred <- predict(RT_m)
-cy %>% 
+pred <- cy %>% 
+  group_by(ID, condition, consistency) %>% 
+  summarize(mean = mean(pred[,1]), sd = sd(pred[,1]), se = sd(pred[,1])/sqrt(sum(!is.na(pred[,1]))), sum = sum(!is.na(pred[,1])))
+
+pred %>% 
   group_by(condition, consistency) %>% 
-  summarize(mean = mean(pred), sd = sd(pred))
+  summarize(meanx = mean(mean), sd = sd(mean), se = sd(mean)/sqrt(37), sum = sum(mean))
+
 
 #arrow: 715, 725
 #avatar: 725, 734 
@@ -300,6 +305,8 @@ E_m <- brm(
 # summary/quality check
 summary(E_m) 
 inv_logit(-2.54)
+inv_logit(0.19)
+inv_logit(0.17)
 
 # posterior checks 
 pp_check(E_m, nsamples = 1000)
@@ -339,6 +346,8 @@ lines(density(post$sigma), lty = 1)
 
 # HYPOTHESIS TESTING --------------------
 
+plot(conditional_effects(E_m), method = "fitted")
+
 # testing difference in baseline condition/consistent trials
 plot(hypothesis(E_m,"conditionO > conditionA"))
 hypothesis(E_m,"conditionO > conditionA")
@@ -359,10 +368,22 @@ inv_logit(-2.65)
 inv_logit(-2.65-1.11)
 
 # make predictions
+p1 <- predict(E_m, type = "response")
+p2 <- predict(E_m)
+
+mean(p1[,1])
+mean(p2[,1])
+
+#predictions II
 y$predE <- predict(E_m)
-y %>% 
+one <- y %>% 
+  group_by(ID, condition, consistency) %>% 
+  summarize(mean = mean(predE[,1]*100), sd = sd(predE[,1]*100), se = sd(predE[,1]*100)/sqrt(sum(!is.na(predE[,1]))), sum =sum(!is.na(predE[,1]))) 
+
+one %>% 
   group_by(condition, consistency) %>% 
-  summarize(mean = mean(predE), sd = sd(predE))
+  summarize(meanx = mean(mean), sd = sd(mean), se = sd(mean)/sqrt(sum(!is.na(mean))), sum =sum(!is.na(mean))) 
+
 
 ```
 
@@ -371,51 +392,59 @@ y %>%
 ```{r}
 
 # RT ------------
-#calculate mean and sd for conditions
-cy_meansd <- cy %>% group_by(condition, consistency) %>% 
-  summarize(mean = mean(RT), 
-            sd = sd(RT))
+summary(cy)
 
-#change names
-cy_meansd$condition <- ifelse(cy_meansd$condition == "A", "Arrow", "Avatar")
+# calculate mean and sd for conditions and id
+group <- cy %>% group_by(ID, condition, consistency) %>% 
+  summarize(mean = mean(RT))
+
+# calculate mean of means + se
+cy_meansd <- group %>% group_by(condition, consistency) %>% 
+  summarize(meanz = mean(mean), se = sd(mean)/sqrt(sum(!is.na(mean))), sum = sum(!is.na(mean)))
+            
+# change names
+cy_meansd$condition <- ifelse(cy_meansd$condition == "A", "Arrow (Non-Social)", "Avatar (Social)")
 cy_meansd$consistency <- ifelse(cy_meansd$consistency == "con", "Consistent", "Inconsistent")
 
 # make plot
-ggplot(cy_meansd, aes(x=condition, y=mean, fill= consistency)) + 
+ggplot(cy_meansd, aes(x=condition, y=meanz, fill= consistency)) + 
   geom_bar(stat="identity", position=position_dodge()) +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,position=position_dodge(.9)) +
+  geom_errorbar(aes(ymin=meanz-se, ymax=meanz+se), width = 0.2, position=position_dodge(.9)) +
   labs(title = "Mean Reaction Time for Arrow and Avatar Condition\nin Consistent and Inconsistent Trials",  
        x="Condition", y = "Mean RT in ms", leged = "Consistency") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  scale_fill_manual(name = "Consistency", values=c("slategray2","slategray4"))
-
+  scale_fill_manual(name = "Consistency", values=c("lightskyblue","firebrick1")) +
+  coord_cartesian(ylim=c(500,760)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
 
 # Error ------------
-# make subset
-percE <- d %>% 
+# make subset, calculate mean for ids
+percE <- y %>% 
   group_by(ID, consistency, condition) %>% 
   summarize(incorrect = length(which(accuracy == "incorrect")), 
             correct = length(which(accuracy == "correct")),
             ratio = (incorrect/(correct+incorrect)*100))
 
-# calculate mean and sd of IDs
+# calculate mean and se of IDs
 percEmean <- percE %>% group_by(condition, consistency) %>% 
   summarize(mean = mean(ratio), 
-            sd = sd(ratio))
+            sd = sd(ratio), 
+            se = sd(ratio)/sqrt(37),
+            sum = sum(!is.na(ratio)))
+
 
 # change names
-percEmean$condition <- ifelse(percEmean$condition == "A", "Arrow", "Avatar")
+percEmean$condition <- ifelse(percEmean$condition == "A", "Arrow (Non-Social)", "Avatar (Social)")
 percEmean$consistency <- ifelse(percEmean$consistency == "con", "Consistent", "Inconsistent")
 
 # make plot
-colors <- c("Sepal Width" = "blue", "Petal Length" = "red", "Petal Width" = "orange")
 ggplot(percEmean, aes(x=condition, y=mean, fill= consistency)) + 
   geom_bar(stat="identity", position=position_dodge()) +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,position=position_dodge(.9)) +
-  labs(title = "Mean Percentage of Incorrect Responses for Arrow and Avatar Condition\nin Consistent and Inconsistent Trials", x="Condition", y = "Mean Percentage of Incorrect Responses", legend = "Consistency") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  scale_fill_manual(name = "Consistency", values=c("slategray2","slategray4"))
-
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), width=.2,position=position_dodge(.9)) +
+  labs(title = "Mean Probability of an Error for Arrow and Avatar Condition\nin Consistent and Inconsistent Trials", x="Condition", y = "Mean Probability of an Error in %", legend = "Consistency") +
+  theme_bw() +
+  scale_fill_manual(name = "Consistency", values=c("lightskyblue","firebrick1"))+
+  theme(plot.title = element_text(hjust = 0.5)) 
 
 ```
 
@@ -435,7 +464,7 @@ names(sum_varyslope_RT)[1] <- "vary_slope_RT"
 names(sum_varyslope_RT)[2] <- "error"
 
 # merge the correct/yes data frame from RT with the empathy scores, which are scaled
-cy_emp <- merge(x = sum_varyslope_RT, y = cy[,c("ID", "s_totalemp", "s_affemp", "s_cogemp")], by = "ID")
+cy_emp <- merge(x = sum_varyslope_RT, y = cy[,c("ID", "s_totalemp", "s_affemp", "s_cogemp", "totalemp")], by = "ID")
 
 # had all lines multiple times, so just summarise
 cy_emp <- cy_emp %>% 
@@ -444,7 +473,8 @@ cy_emp <- cy_emp %>%
             error = mean(error), 
             s_totalemp = mean(s_totalemp),
             s_affemp = mean(s_affemp),
-            s_cogemp = mean(s_cogemp))
+            s_cogemp = mean(s_cogemp),
+            totalemp = mean(totalemp))
 
 
 # scale the slopes
@@ -649,31 +679,36 @@ pareto_k_table(loo(RT_aff_m))
 # H2 Plot RT --------------------
 
 # plot for total empathy
-p_RTemp <- ggplot(data = cy_emp, aes(y = s_slope_RT, x = s_totalemp)) + 
+emp_RT <- ggplot(data = cy_emp, aes(y = s_slope_RT, x = s_totalemp)) + 
   geom_point() + 
-  geom_smooth(aes(y = s_slope_RT, x = s_totalemp), method = lm, color = "slategray4") +
+  geom_smooth(aes(y = s_slope_RT, x = s_totalemp), method = lm, color = "black", level = 0.9) +
   labs(title = "Relation between Scaled Total Empathy Scores\nand Scaled Varying Slopes (RT)", x="Scaled Total Empathy Scores", y = "Scaled Varying Slopes from Model 1.1 (RT)") +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  coord_cartesian(ylim=c(-2.25,3.25))
 
 
 # plot for all empathy sclaes
-colors <- c("Total Empathy" = "black", "Cognitive Empathy" = "skyblue", "Affective Empathy" = "slategray4")
-ggplot(data = cy_emp) + 
+colors <- c("Total Empathy" = "black", "Cognitive Empathy" = "firebrick1", "Affective Empathy" = "deepskyblue3")
+all_emp_RT <- ggplot(data = cy_emp) + 
   #total emp
   geom_point(aes(y = s_slope_RT, x = s_totalemp, color = "Total Empathy")) + 
-  geom_smooth(aes(y = s_slope_RT, x = s_totalemp), method = lm, color = "black") +
+  geom_smooth(aes(y = s_slope_RT, x = s_totalemp), method = lm, color = "black", level = 0.9, alpha = 0.2) +
   #cognitive
   geom_point(aes(y = s_slope_RT, x = s_cogemp, color = "Cognitive Empathy")) + 
-  geom_smooth(aes(y = s_slope_RT, x = s_cogemp), method = lm, color = "skyblue") +
+  geom_smooth(aes(y = s_slope_RT, x = s_cogemp), method = lm, color = "firebrick1", level = 0.9, alpha = 0.2) +
   #affective
   geom_point(aes(y = s_slope_RT, x = s_affemp, color = "Affective Empathy")) + 
-  geom_smooth(aes(y = s_slope_RT, x = s_affemp), method = lm, color = "slategray4") +
+  geom_smooth(aes(y = s_slope_RT, x = s_affemp), method = lm, color = "deepskyblue3", level = 0.9, alpha = 0.2) +
   labs(title = "Relation between Scaled Empathy Scores\nand Scaled Varying Slopes (RT)", 
        x="Scaled Empathy Scores", 
        y = "Scaled Varying Slopes from Model 1.1 (RT)",
        color = "Empathy Scale") +
   scale_color_manual(values = colors) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  legend_none() +
+  coord_cartesian(ylim=c(-2.25,3.25))
 
 
 ```
@@ -896,32 +931,38 @@ loo_model_weights(E_total_m, E_cog_m, E_aff_m)
 # H2 Plot Error --------------------
 
 # plot total empathy - error
-p_Error_emp <- ggplot(data = y_emp, aes(y = s_vary_slope_E, x = s_totalemp)) + 
+emp_E <- ggplot(data = y_emp, aes(y = s_vary_slope_E, x = s_totalemp)) + 
   geom_point() + 
-  geom_smooth(aes(y =s_vary_slope_E, x = s_totalemp), method = lm, color = "slategray4") +
-  labs(title = "Relation between Scaled Total Empathy Scores\nand Scaled Varying Slopes (Incorrect)", x="Scaled Total Empathy Scores", y = "Scaled Varying Slopes from Model 1.2 (Incorrect)") +
-  theme(plot.title = element_text(hjust = 0.5))
-p_Error_emp
+  geom_smooth(aes(y =s_vary_slope_E, x = s_totalemp), method = lm, color = "black", level = 0.9) +
+  labs(title = "Relation between Scaled Total Empathy Scores\nand Scaled Varying Slopes (Error)", x="Scaled Total Empathy Scores", y = "Scaled Varying Slopes from Model 1.2 (Error)") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  coord_cartesian(ylim=c(-2.25,3.25))
+
+emp_RT + emp_E
 
 # plot for all empathy - error
-colors <- c("Total Empathy" = "black", "Cognitive Empathy" = "skyblue", "Affective Empathy" = "slategray4")
-ggplot(data = y_emp) + 
+colors <- c("Total Empathy" = "black", "Cognitive Empathy" = "firebrick1", "Affective Empathy" = "deepskyblue3")
+allemp_E <- ggplot(data = y_emp) + 
   #total emp
   geom_point(aes(y = s_vary_slope_E, x = s_totalemp, color = "Total Empathy")) + 
-  geom_smooth(aes(y = s_vary_slope_E, x = s_totalemp), method = lm, color = "black") +
+  geom_smooth(aes(y = s_vary_slope_E, x = s_totalemp), method = lm, color = "black", level = 0.9, alpha = 0.2) +
   #cognitive
   geom_point(aes(y = s_vary_slope_E, x = s_cogemp, color = "Cognitive Empathy")) + 
-  geom_smooth(aes(y = s_vary_slope_E, x = s_cogemp), method = lm, color = "skyblue") +
+  geom_smooth(aes(y = s_vary_slope_E, x = s_cogemp), method = lm, color = "firebrick1", level = 0.9, alpha = 0.2) +
   #affective
   geom_point(aes(y = s_vary_slope_E, x = s_affemp, color = "Affective Empathy")) + 
-  geom_smooth(aes(y = s_vary_slope_E, x = s_affemp), method = lm, color = "slategray4") +
-  labs(title = "Relation between Scaled Empathy Scores\nand Scaled Varying Slopes (Incorrect)", 
+  geom_smooth(aes(y = s_vary_slope_E, x = s_affemp), method = lm, color = "deepskyblue3", level = 0.9, alpha = 0.2) +
+  labs(title = "Relation between Scaled Empathy Scores\nand Scaled Varying Slopes (Error)", 
        x="Scaled Empathy Scores", 
-       y = "Scaled Varying Slopes from Model 1.2 (Incorrect)", 
+       y = "Scaled Varying Slopes from Model 1.2 (Error)", 
        color = "Empathy Scale") +
   scale_color_manual(values = colors) +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  coord_cartesian(ylim=c(-2.25,3.25))
 
+all_emp_RT + allemp_E
 
 ```
 
